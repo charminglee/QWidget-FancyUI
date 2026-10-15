@@ -80,11 +80,14 @@ namespace fancy
 
         void resizeEvent(QResizeEvent *event) override;
 
+        void showEvent(QShowEvent *event) override;
+
     private:
         int _xBorderWidth{};
         int _yBorderWidth{};
         bool _useWindowEffects;
         bool _useCompositionWindowEffect;
+        bool _win32StylePatched{};
         DwmWindowEffect _dwmWindowEffect;
         QColor _bkgColor;
         TitleBar *_titleBar; // 标题栏

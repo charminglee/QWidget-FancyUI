@@ -22,6 +22,9 @@
 #define ABGR(a, b, g, r) ((COLORREF)(((a & 0xffu) << 24) | ((b & 0xffu) << 16) | ((g & 0xffu) << 8) | (r & 0xffu)))
 
 #ifdef __GNUC__
+/* 较新的 mingw-w64 头文件（MSYS2，v11+）已原生定义这些 DWMWA 属性与
+ * DWM_SYSTEMBACKDROP_TYPE，此处再定义会与之冲突导致编译失败。 */
+#if !defined(__MINGW64_VERSION_MAJOR) || (__MINGW64_VERSION_MAJOR < 11)
 #define DWMWA_COLOR_DEFAULT 0xFFFFFFFF
 #define DWMWA_COLOR_NONE    0xFFFFFFFE
 #define DWMWA_USE_IMMERSIVE_DARK_MODE 20
@@ -38,6 +41,7 @@ enum DWM_SYSTEMBACKDROP_TYPE
     DWMSBT_TRANSIENTWINDOW,
     DWMSBT_TABBEDWINDOW,
 };
+#endif
 #endif
 
 #ifdef Q_OS_WIN

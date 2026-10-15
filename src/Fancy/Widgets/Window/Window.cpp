@@ -12,6 +12,7 @@
 #include <QTimer>
 #include <QDebug>
 #include <QPainter>
+#include <QOperatingSystemVersion>
 #include <QtMath>
 
 #include "Core/Defs.h"
@@ -50,7 +51,15 @@ namespace fancy
 
 #ifdef Q_OS_WIN
         const HWND hwnd = reinterpret_cast<HWND>(winId());
+        // Win11 起 DWM 自动为带 WS_CAPTION 的窗口提供圆角、边框与阴影；
+        // 库原样的 {1,1,0,1} 玻璃边会使窗口退回 Win10 直角兼容外观。
+        // 同时 Chromium/Windows Terminal 的经验表明：调用
+        // DwmExtendFrameIntoClientArea 且保留一处非零 margin（底部 1px）是
+        // DWM 保持最小化/还原过渡动画的条件，全零会让动画消失。故 Win11
+        // 采用 Chromium 同款 {0,0,1,0}，Win10 维持库原样。
         MARGINS margins = {1, 1, 0, 1};
+        if (QOperatingSystemVersion::current() >= QOperatingSystemVersion::Windows11)
+            margins = {0, 0, 1, 0};
         SystemAccessor::DwmExtendFrameIntoClientArea(hwnd, &margins);
         SetWindowLongPtr(hwnd,
                          GWL_STYLE,
@@ -267,7 +276,11 @@ namespace fancy
                     }
                 }
 
-                if (_titleBar->_maximizeButton && !_titleBar->_maximizeButton->isHidden())
+                // 已弃用 HTMAXBUTTON 命中：摘除 WS_POPUP 恢复窗口动画后（见
+                // showEvent），系统会直接接管 caption 按钮区的鼠标交互，
+                // WM_NCLBUTTONDOWN/UP 不再送达本窗口，点击会整体失效；最大化
+                // 改由 MaximizeButton::clicked 直发 WM_SYSCOMMAND 完成。
+                if (false && _titleBar->_maximizeButton && !_titleBar->_maximizeButton->isHidden())
                 {
                     // 返回零也可能表示成功且坐标位移为零，需结合错误码判断。
                     POINT clientPoint = p;
@@ -397,6 +410,31 @@ namespace fancy
     {
         setDwmMargins();
         QWidget::resizeEvent(event);
+    }
+
+    void Window::showEvent(QShowEvent *event)
+    {
+        QWidget::showEvent(event);
+#ifdef Q_OS_WIN
+        // Qt 顶层窗口带 WS_POPUP；配合 WM_NCCALCSIZE 移除非客户区后，DWM 会
+        // 把 "WS_POPUP + 无非客户区" 视作菜单/提示框一类：Win11 不给圆角，
+        // 也不播最小化/还原过渡动画。窗口显示后 Qt 不再改写原生样式，在此
+        // 摘除 WS_POPUP 并显式要求圆角（同 Chrome/Windows Terminal 的做法），
+        // 恢复与系统窗口一致的外观与动画。旧系统对圆角属性予以忽略。
+        if (!_win32StylePatched) {
+            _win32StylePatched = true;
+            const HWND hwnd = reinterpret_cast<HWND>(winId());
+            SetWindowLongPtr(hwnd, GWL_STYLE,
+                             GetWindowLongPtr(hwnd, GWL_STYLE)
+                                 & ~static_cast<LONG_PTR>(WS_POPUP));
+            SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
+                             | SWP_FRAMECHANGED);
+            const INT round = 2; /* DWMWCP_ROUND */
+            DwmSetWindowAttribute(hwnd, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */,
+                                  &round, sizeof(round));
+        }
+#endif
     }
 
     void Window::onThemeChanged()
